@@ -22,7 +22,8 @@ default blink reminder fires every 20 seconds.
 
 Right-click the tray icon → **Settings…** to open an editor where you can:
 
-- change each reminder's **message**, **interval**, and **on-screen duration**,
+- change each reminder's **message**, **interval** (in seconds, minutes or
+  hours), and **on-screen duration**,
 - **add** or **remove** reminders,
 - tweak **font size**, **opacity**, and **fade** time.
 

@@ -60,6 +60,99 @@ enum SettingsOutcome {
     Cancel,
 }
 
+/// Unit used to display/edit a reminder interval in the settings window.
+#[derive(Clone, Copy, PartialEq)]
+enum TimeUnit {
+    Seconds,
+    Minutes,
+    Hours,
+}
+
+impl TimeUnit {
+    const ALL: [TimeUnit; 3] = [TimeUnit::Seconds, TimeUnit::Minutes, TimeUnit::Hours];
+
+    fn secs(self) -> u64 {
+        match self {
+            TimeUnit::Seconds => 1,
+            TimeUnit::Minutes => 60,
+            TimeUnit::Hours => 3600,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            TimeUnit::Seconds => "seconds",
+            TimeUnit::Minutes => "minutes",
+            TimeUnit::Hours => "hours",
+        }
+    }
+}
+
+/// Split a raw interval into the largest whole unit that divides it evenly, so
+/// e.g. 1800s shows as "30 minutes" rather than "1800 seconds".
+fn split_interval(secs: u64) -> (u64, TimeUnit) {
+    if secs >= 3600 && secs.is_multiple_of(3600) {
+        (secs / 3600, TimeUnit::Hours)
+    } else if secs >= 60 && secs.is_multiple_of(60) {
+        (secs / 60, TimeUnit::Minutes)
+    } else {
+        (secs.max(1), TimeUnit::Seconds)
+    }
+}
+
+/// One editable reminder row in the settings window.
+struct ReminderDraft {
+    message: String,
+    amount: u64,
+    unit: TimeUnit,
+    duration_secs: f32,
+}
+
+/// The whole settings window's working state (decoupled from the on-disk config
+/// so the interval can be edited as a value + unit).
+struct SettingsDraft {
+    reminders: Vec<ReminderDraft>,
+    appearance: config::Appearance,
+}
+
+impl SettingsDraft {
+    fn from_config(cfg: &config::Config) -> Self {
+        let reminders = cfg
+            .reminders
+            .iter()
+            .map(|r| {
+                let (amount, unit) = split_interval(r.interval_secs);
+                ReminderDraft {
+                    message: r.message.clone(),
+                    amount,
+                    unit,
+                    duration_secs: r.duration_secs,
+                }
+            })
+            .collect();
+        Self {
+            reminders,
+            appearance: cfg.appearance.clone(),
+        }
+    }
+
+    fn to_config(&self) -> config::Config {
+        let reminders = self
+            .reminders
+            .iter()
+            .map(|r| config::ReminderConfig {
+                message: r.message.clone(),
+                interval_secs: r.amount.max(1) * r.unit.secs(),
+                duration_secs: r.duration_secs,
+            })
+            .collect();
+        config::Config {
+            appearance: self.appearance.clone(),
+            reminders,
+        }
+    }
+}
+
 struct BlinkApp {
     /// Source-of-truth config; the scheduler is derived from it.
     config: config::Config,
@@ -69,7 +162,7 @@ struct BlinkApp {
     /// Whether the overlay has been stretched to cover the monitor yet.
     sized: bool,
     /// Working copy shown in the settings window; `Some` while it's open.
-    settings: Option<config::Config>,
+    settings: Option<SettingsDraft>,
 }
 
 impl BlinkApp {
@@ -142,7 +235,7 @@ impl eframe::App for BlinkApp {
                     tray::TrayAction::OpenSettings => {
                         // Reopening keeps any in-progress edits.
                         if self.settings.is_none() {
-                            self.settings = Some(self.config.clone());
+                            self.settings = Some(SettingsDraft::from_config(&self.config));
                         }
                     }
                     tray::TrayAction::TogglePause => {
@@ -196,8 +289,8 @@ impl BlinkApp {
                 egui::ViewportId::from_hash_of("blink-settings"),
                 egui::ViewportBuilder::default()
                     .with_title("Blink Reminder — Settings")
-                    .with_inner_size([580.0, 400.0])
-                    .with_min_inner_size([420.0, 260.0])
+                    .with_inner_size([720.0, 480.0])
+                    .with_min_inner_size([560.0, 340.0])
                     // The overlay is always-on-top; make sure this normal window
                     // comes forward and can take keyboard focus for text editing.
                     .with_active(true),
@@ -219,7 +312,7 @@ impl BlinkApp {
         match outcome {
             SettingsOutcome::Save => {
                 let draft = self.settings.take().expect("settings is Some");
-                self.config = draft;
+                self.config = draft.to_config();
                 if let Err(e) = config::save(&self.config) {
                     eprintln!("blink: could not save config: {e}");
                 }
@@ -233,32 +326,39 @@ impl BlinkApp {
 
 /// The contents of the settings window: a row per reminder plus appearance
 /// controls and Save/Cancel.
-fn settings_ui(ui: &mut egui::Ui, draft: &mut config::Config, outcome: &mut SettingsOutcome) {
+fn settings_ui(ui: &mut egui::Ui, draft: &mut SettingsDraft, outcome: &mut SettingsOutcome) {
     ui.add_space(4.0);
     ui.label("Reminders fire on their own schedule and fade in at a random spot.");
-    ui.separator();
+    ui.add_space(6.0);
 
     egui::ScrollArea::vertical()
-        .max_height(220.0)
+        .auto_shrink([false, true])
+        .max_height(260.0)
         .show(ui, |ui| {
             let mut remove = None;
             egui::Grid::new("reminders_grid")
                 .num_columns(4)
-                .spacing([10.0, 8.0])
+                .spacing([12.0, 10.0])
                 .show(ui, |ui| {
                     ui.strong("Message");
                     ui.strong("Every");
-                    ui.strong("Show");
+                    ui.strong("Show for");
                     ui.label("");
                     ui.end_row();
 
                     for (i, r) in draft.reminders.iter_mut().enumerate() {
-                        ui.add(egui::TextEdit::singleline(&mut r.message).desired_width(240.0));
-                        ui.add(
-                            egui::DragValue::new(&mut r.interval_secs)
-                                .range(1..=86_400)
-                                .suffix(" s"),
-                        );
+                        ui.add(egui::TextEdit::singleline(&mut r.message).desired_width(300.0));
+                        ui.horizontal(|ui| {
+                            ui.add(egui::DragValue::new(&mut r.amount).range(1..=9999));
+                            egui::ComboBox::from_id_salt(("unit", i))
+                                .selected_text(r.unit.label())
+                                .width(90.0)
+                                .show_ui(ui, |ui| {
+                                    for unit in TimeUnit::ALL {
+                                        ui.selectable_value(&mut r.unit, unit, unit.label());
+                                    }
+                                });
+                        });
                         ui.add(
                             egui::DragValue::new(&mut r.duration_secs)
                                 .range(0.5..=60.0)
@@ -276,20 +376,23 @@ fn settings_ui(ui: &mut egui::Ui, draft: &mut config::Config, outcome: &mut Sett
             }
         });
 
+    ui.add_space(4.0);
     if ui.button("➕ Add reminder").clicked() {
-        draft.reminders.push(config::ReminderConfig {
+        draft.reminders.push(ReminderDraft {
             message: "New reminder".into(),
-            interval_secs: 60,
+            amount: 1,
+            unit: TimeUnit::Minutes,
             duration_secs: 4.0,
         });
     }
 
     ui.separator();
     ui.strong("Appearance");
+    ui.add_space(4.0);
     ui.horizontal(|ui| {
         ui.label("Font");
         ui.add(egui::DragValue::new(&mut draft.appearance.font_size).range(8.0..=200.0));
-        ui.add_space(8.0);
+        ui.add_space(12.0);
         ui.label("Opacity");
         ui.add(
             egui::DragValue::new(&mut draft.appearance.max_opacity)
