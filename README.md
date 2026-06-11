@@ -18,6 +18,21 @@ cargo run --release  # smoother
 A tray icon (a little eye 👁️) appears; on macOS there is no Dock icon. The
 default blink reminder fires every 20 seconds.
 
+## Build a macOS app (.app)
+
+To get a double-clickable app instead of running from the terminal:
+
+```sh
+./package-macos.sh              # builds dist/Blink Reminder.app
+./package-macos.sh --universal  # arm64 + x86_64 (for sharing with Intel Macs)
+open "dist/Blink Reminder.app"  # launch it
+```
+
+The bundle is marked `LSUIElement`, so it runs as a menu-bar (tray) app with no
+Dock icon — quit it from the eye icon's menu. It's ad-hoc code-signed for local
+use; to keep it in your Applications folder just drag `Blink Reminder.app`
+there. (To launch at login: System Settings → General → Login Items → add it.)
+
 ## Editing reminders
 
 Right-click the tray icon → **Settings…** to open an editor where you can:
