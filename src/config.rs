@@ -25,6 +25,10 @@ pub struct Appearance {
     pub max_opacity: f32,
     /// Duration of the fade-in (and, symmetrically, the fade-out) in seconds.
     pub fade_secs: f32,
+    /// If true, a click dismisses the visible reminder (and the overlay becomes
+    /// clickable while one is shown). If false, the overlay is always
+    /// click-through so it never disturbs you. Defaults to false.
+    pub click_to_dismiss: bool,
 }
 
 /// A single reminder: what to say and how often to say it.
@@ -43,6 +47,7 @@ impl Default for Appearance {
             font_size: 28.0,
             max_opacity: 0.85,
             fade_secs: 0.6,
+            click_to_dismiss: false,
         }
     }
 }

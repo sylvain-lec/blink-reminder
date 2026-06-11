@@ -69,7 +69,10 @@ enum TimeUnit {
 }
 
 impl TimeUnit {
+    /// Units offered for a reminder's interval.
     const ALL: [TimeUnit; 3] = [TimeUnit::Seconds, TimeUnit::Minutes, TimeUnit::Hours];
+    /// Units offered for how long a reminder stays on screen.
+    const DURATION: [TimeUnit; 2] = [TimeUnit::Seconds, TimeUnit::Minutes];
 
     fn secs(self) -> u64 {
         match self {
@@ -100,12 +103,22 @@ fn split_interval(secs: u64) -> (u64, TimeUnit) {
     }
 }
 
+/// Show a duration in whole minutes when it divides evenly, else in seconds.
+fn split_duration(secs: f32) -> (f32, TimeUnit) {
+    if secs >= 60.0 && (secs % 60.0) == 0.0 {
+        (secs / 60.0, TimeUnit::Minutes)
+    } else {
+        (secs, TimeUnit::Seconds)
+    }
+}
+
 /// One editable reminder row in the settings window.
 struct ReminderDraft {
     message: String,
     amount: u64,
     unit: TimeUnit,
-    duration_secs: f32,
+    duration_amount: f32,
+    duration_unit: TimeUnit,
 }
 
 /// The whole settings window's working state (decoupled from the on-disk config
@@ -122,11 +135,13 @@ impl SettingsDraft {
             .iter()
             .map(|r| {
                 let (amount, unit) = split_interval(r.interval_secs);
+                let (duration_amount, duration_unit) = split_duration(r.duration_secs);
                 ReminderDraft {
                     message: r.message.clone(),
                     amount,
                     unit,
-                    duration_secs: r.duration_secs,
+                    duration_amount,
+                    duration_unit,
                 }
             })
             .collect();
@@ -143,7 +158,7 @@ impl SettingsDraft {
             .map(|r| config::ReminderConfig {
                 message: r.message.clone(),
                 interval_secs: r.amount.max(1) * r.unit.secs(),
-                duration_secs: r.duration_secs,
+                duration_secs: r.duration_amount.max(0.1) * r.duration_unit.secs() as f32,
             })
             .collect();
         config::Config {
@@ -161,6 +176,9 @@ struct BlinkApp {
     paused: bool,
     /// Whether the overlay has been stretched to cover the monitor yet.
     sized: bool,
+    /// Current OS click-through state of the overlay; toggled off only while a
+    /// click-to-dismiss reminder is on screen.
+    passthrough: bool,
     /// Working copy shown in the settings window; `Some` while it's open.
     settings: Option<SettingsDraft>,
 }
@@ -177,6 +195,7 @@ impl BlinkApp {
             tray,
             paused: false,
             sized: false,
+            passthrough: true,
             settings: None,
         }
     }
@@ -205,6 +224,15 @@ impl BlinkApp {
         let bg = egui::Color32::from_rgba_unmultiplied(0, 0, 0, (alpha * 0.45 * 255.0) as u8);
         painter.rect_filled(rect, egui::CornerRadius::same(12), bg);
         painter.galley(rect.center() - galley.size() / 2.0, galley, text_color);
+
+        // When click-to-dismiss is on, show a pointer cursor over the pill so
+        // it's obvious you can click it away.
+        if app.click_to_dismiss {
+            let resp = ui.interact(rect, egui::Id::new("blink-dismiss"), egui::Sense::click());
+            if resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+        }
     }
 }
 
@@ -256,16 +284,38 @@ impl eframe::App for BlinkApp {
 
         // Run reminders only in normal overlay mode. While paused or editing
         // settings the overlay stays empty (the next tray/menu event wakes us).
+        let mut showing = false;
         if !self.paused && self.settings.is_none() {
             let now = Instant::now();
             let wake = self.scheduler.update(now, ui.max_rect());
 
             if self.scheduler.current.is_some() {
                 self.draw_active(ui, now);
+                showing = true;
+
+                // Click-to-dismiss: a click anywhere clears the reminder (the
+                // overlay is interactive in this mode — see passthrough below).
+                if self.config.appearance.click_to_dismiss
+                    && ui.input(|i| i.pointer.primary_clicked())
+                {
+                    self.scheduler.current = None;
+                    showing = false;
+                }
+            }
+
+            if self.scheduler.current.is_some() {
                 ctx.request_repaint(); // animate the fade
             } else if let Some(dur) = wake {
                 ctx.request_repaint_after(dur);
             }
+        }
+
+        // The overlay is click-through except while a click-to-dismiss reminder
+        // is on screen, so by default blink never intercepts your clicks.
+        let want_passthrough = !(self.config.appearance.click_to_dismiss && showing);
+        if want_passthrough != self.passthrough {
+            ctx.send_viewport_cmd(egui::ViewportCommand::MousePassthrough(want_passthrough));
+            self.passthrough = want_passthrough;
         }
 
         self.show_settings(ui);
@@ -363,11 +413,18 @@ fn settings_ui(ui: &mut egui::Ui, draft: &mut SettingsDraft, outcome: &mut Setti
                         ui.add_space(16.0);
                         ui.label("Show for");
                         ui.add(
-                            egui::DragValue::new(&mut r.duration_secs)
-                                .range(0.5..=60.0)
-                                .speed(0.1)
-                                .suffix(" s"),
+                            egui::DragValue::new(&mut r.duration_amount)
+                                .range(0.1..=600.0)
+                                .speed(0.1),
                         );
+                        egui::ComboBox::from_id_salt(("dur_unit", i))
+                            .selected_text(r.duration_unit.label())
+                            .width(96.0)
+                            .show_ui(ui, |ui| {
+                                for unit in TimeUnit::DURATION {
+                                    ui.selectable_value(&mut r.duration_unit, unit, unit.label());
+                                }
+                            });
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button("🗑 Remove").clicked() {
                                 remove = Some(i);
@@ -388,7 +445,8 @@ fn settings_ui(ui: &mut egui::Ui, draft: &mut SettingsDraft, outcome: &mut Setti
             message: "New reminder".into(),
             amount: 1,
             unit: TimeUnit::Minutes,
-            duration_secs: 4.0,
+            duration_amount: 4.0,
+            duration_unit: TimeUnit::Seconds,
         });
     }
 
@@ -414,6 +472,17 @@ fn settings_ui(ui: &mut egui::Ui, draft: &mut SettingsDraft, outcome: &mut Setti
                 .suffix(" s"),
         );
     });
+
+    ui.add_space(6.0);
+    ui.checkbox(
+        &mut draft.appearance.click_to_dismiss,
+        "Click a reminder to dismiss it",
+    )
+    .on_hover_text(
+        "When off, blink is completely click-through and never intercepts clicks.\n\
+         When on, the overlay becomes clickable while a reminder is shown so you \
+         can click to dismiss it.",
+    );
 
     ui.separator();
     ui.horizontal(|ui| {

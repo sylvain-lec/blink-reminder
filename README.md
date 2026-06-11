@@ -23,9 +23,10 @@ default blink reminder fires every 20 seconds.
 Right-click the tray icon → **Settings…** to open an editor where you can:
 
 - change each reminder's **message**, **interval** (in seconds, minutes or
-  hours), and **on-screen duration**,
+  hours), and **on-screen duration** (in seconds or minutes),
 - **add** or **remove** reminders,
-- tweak **font size**, **opacity**, and **fade** time.
+- tweak **font size**, **opacity**, and **fade** time,
+- toggle **Click a reminder to dismiss it** (see below).
 
 Click **Save** to apply immediately and write the changes back to the config
 file (below); **Cancel** or closing the window discards them. You can also edit
@@ -44,9 +45,10 @@ printed to the console:
 
 ```toml
 [appearance]
-font_size   = 28.0   # text size in points
-max_opacity = 0.85   # peak text alpha (0.0–1.0); keep it semi-transparent
-fade_secs   = 0.6    # fade-in (== fade-out) duration in seconds
+font_size        = 28.0   # text size in points
+max_opacity      = 0.85   # peak text alpha (0.0–1.0); keep it semi-transparent
+fade_secs        = 0.6    # fade-in (== fade-out) duration in seconds
+click_to_dismiss = false  # see "Click to dismiss" below
 
 # Add as many [[reminders]] blocks as you like — each has its own schedule.
 [[reminders]]
@@ -68,6 +70,16 @@ duration_secs = 5
 Edits made in the **Settings…** window are saved here automatically. If you
 edit the file by hand, **relaunch** to apply the changes. An invalid or missing
 file falls back to the built-in defaults (a message is printed to stderr).
+
+## Click to dismiss
+
+By default blink is **completely click-through** — clicks always fall through to
+whatever is underneath, so a reminder can never interrupt you. Enabling
+**click_to_dismiss** lets you click a reminder to make it disappear early. The
+trade-off: while a reminder is on screen the overlay becomes clickable (a click
+*anywhere* dismisses it), so for those few seconds clicks land on the overlay
+instead of the app behind it. When no reminder is showing, the overlay is
+click-through again. The option is off by default.
 
 ## How it works
 
