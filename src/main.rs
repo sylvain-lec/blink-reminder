@@ -289,8 +289,8 @@ impl BlinkApp {
                 egui::ViewportId::from_hash_of("blink-settings"),
                 egui::ViewportBuilder::default()
                     .with_title("Blink Reminder — Settings")
-                    .with_inner_size([720.0, 480.0])
-                    .with_min_inner_size([560.0, 340.0])
+                    .with_inner_size([840.0, 480.0])
+                    .with_min_inner_size([640.0, 340.0])
                     // The overlay is always-on-top; make sure this normal window
                     // comes forward and can take keyboard focus for text editing.
                     .with_active(true),
@@ -347,7 +347,11 @@ fn settings_ui(ui: &mut egui::Ui, draft: &mut SettingsDraft, outcome: &mut Setti
                     ui.end_row();
 
                     for (i, r) in draft.reminders.iter_mut().enumerate() {
-                        ui.add(egui::TextEdit::singleline(&mut r.message).desired_width(300.0));
+                        ui.add(
+                            egui::TextEdit::singleline(&mut r.message)
+                                .desired_width(440.0)
+                                .hint_text("Reminder text"),
+                        );
                         ui.horizontal(|ui| {
                             ui.add(egui::DragValue::new(&mut r.amount).range(1..=9999));
                             egui::ComboBox::from_id_salt(("unit", i))
