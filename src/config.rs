@@ -25,10 +25,6 @@ pub struct Appearance {
     pub max_opacity: f32,
     /// Duration of the fade-in (and, symmetrically, the fade-out) in seconds.
     pub fade_secs: f32,
-    /// If true, a click dismisses the visible reminder (and the overlay becomes
-    /// clickable while one is shown). If false, the overlay is always
-    /// click-through so it never disturbs you. Defaults to false.
-    pub click_to_dismiss: bool,
 }
 
 /// A single reminder: what to say and how often to say it.
@@ -39,6 +35,10 @@ pub struct ReminderConfig {
     pub interval_secs: u64,
     /// How long the reminder stays on screen (including fade in/out), in seconds.
     pub duration_secs: f32,
+    /// If true, this reminder is clickable while shown and a click dismisses it.
+    /// If false (default) it stays fully click-through so it never disturbs you.
+    #[serde(default)]
+    pub click_to_dismiss: bool,
 }
 
 impl Default for Appearance {
@@ -47,7 +47,6 @@ impl Default for Appearance {
             font_size: 28.0,
             max_opacity: 0.85,
             fade_secs: 0.6,
-            click_to_dismiss: false,
         }
     }
 }
@@ -61,16 +60,19 @@ impl Default for Config {
                     message: "Time to blink 👁️".into(),
                     interval_secs: 20,
                     duration_secs: 4.0,
+                    click_to_dismiss: false,
                 },
                 ReminderConfig {
                     message: "Stand up and stretch 🧍".into(),
                     interval_secs: 1800,
                     duration_secs: 5.0,
+                    click_to_dismiss: false,
                 },
                 ReminderConfig {
                     message: "Sip some water 💧".into(),
                     interval_secs: 3600,
                     duration_secs: 5.0,
+                    click_to_dismiss: false,
                 },
             ],
         }

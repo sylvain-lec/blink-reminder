@@ -23,6 +23,8 @@ pub struct Active {
     pub pos: Pos2,
     pub started: Instant,
     pub duration: f32,
+    /// Whether clicking this reminder dismisses it (per-reminder setting).
+    pub click_to_dismiss: bool,
 }
 
 impl Active {
@@ -113,6 +115,7 @@ impl Scheduler {
                 let s = &mut self.reminders[i];
                 let message = s.cfg.message.clone();
                 let duration = s.cfg.duration_secs.max(0.1);
+                let click_to_dismiss = s.cfg.click_to_dismiss;
                 let pos = random_pos(&message, self.appearance.font_size, screen);
                 s.next_fire = now + interval_of(&s.cfg);
                 self.current = Some(Active {
@@ -120,6 +123,7 @@ impl Scheduler {
                     pos,
                     started: now,
                     duration,
+                    click_to_dismiss,
                 });
             }
         }
@@ -177,6 +181,7 @@ mod tests {
                 message: "blink".into(),
                 interval_secs,
                 duration_secs,
+                click_to_dismiss: false,
             }],
         }
     }
@@ -192,6 +197,7 @@ mod tests {
             pos: pos2(0.0, 0.0),
             started: Instant::now(),
             duration: 4.0,
+            click_to_dismiss: false,
         };
         let max = 0.8;
         let fade = 0.5;

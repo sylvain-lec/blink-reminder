@@ -119,6 +119,7 @@ struct ReminderDraft {
     unit: TimeUnit,
     duration_amount: f32,
     duration_unit: TimeUnit,
+    click_to_dismiss: bool,
 }
 
 /// The whole settings window's working state (decoupled from the on-disk config
@@ -142,6 +143,7 @@ impl SettingsDraft {
                     unit,
                     duration_amount,
                     duration_unit,
+                    click_to_dismiss: r.click_to_dismiss,
                 }
             })
             .collect();
@@ -159,6 +161,7 @@ impl SettingsDraft {
                 message: r.message.clone(),
                 interval_secs: r.amount.max(1) * r.unit.secs(),
                 duration_secs: r.duration_amount.max(0.1) * r.duration_unit.secs() as f32,
+                click_to_dismiss: r.click_to_dismiss,
             })
             .collect();
         config::Config {
@@ -225,9 +228,9 @@ impl BlinkApp {
         painter.rect_filled(rect, egui::CornerRadius::same(12), bg);
         painter.galley(rect.center() - galley.size() / 2.0, galley, text_color);
 
-        // When click-to-dismiss is on, show a pointer cursor over the pill so
-        // it's obvious you can click it away.
-        if app.click_to_dismiss {
+        // When this reminder is click-to-dismiss, show a pointer cursor over the
+        // pill so it's obvious you can click it away.
+        if active.click_to_dismiss {
             let resp = ui.interact(rect, egui::Id::new("blink-dismiss"), egui::Sense::click());
             if resp.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -284,22 +287,21 @@ impl eframe::App for BlinkApp {
 
         // Run reminders only in normal overlay mode. While paused or editing
         // settings the overlay stays empty (the next tray/menu event wakes us).
-        let mut showing = false;
+        let mut dismissable_showing = false;
         if !self.paused && self.settings.is_none() {
             let now = Instant::now();
             let wake = self.scheduler.update(now, ui.max_rect());
 
-            if self.scheduler.current.is_some() {
+            // `Some(true)` if the visible reminder is click-to-dismiss.
+            if let Some(dismissable) = self.scheduler.current.as_ref().map(|a| a.click_to_dismiss) {
                 self.draw_active(ui, now);
-                showing = true;
 
-                // Click-to-dismiss: a click anywhere clears the reminder (the
+                // A click anywhere clears a click-to-dismiss reminder (the
                 // overlay is interactive in this mode — see passthrough below).
-                if self.config.appearance.click_to_dismiss
-                    && ui.input(|i| i.pointer.primary_clicked())
-                {
+                if dismissable && ui.input(|i| i.pointer.primary_clicked()) {
                     self.scheduler.current = None;
-                    showing = false;
+                } else {
+                    dismissable_showing = dismissable;
                 }
             }
 
@@ -311,8 +313,9 @@ impl eframe::App for BlinkApp {
         }
 
         // The overlay is click-through except while a click-to-dismiss reminder
-        // is on screen, so by default blink never intercepts your clicks.
-        let want_passthrough = !(self.config.appearance.click_to_dismiss && showing);
+        // is on screen, so reminders that aren't marked clickable (and the idle
+        // overlay) never intercept your clicks.
+        let want_passthrough = !dismissable_showing;
         if want_passthrough != self.passthrough {
             ctx.send_viewport_cmd(egui::ViewportCommand::MousePassthrough(want_passthrough));
             self.passthrough = want_passthrough;
@@ -431,6 +434,12 @@ fn settings_ui(ui: &mut egui::Ui, draft: &mut SettingsDraft, outcome: &mut Setti
                             }
                         });
                     });
+
+                    ui.checkbox(&mut r.click_to_dismiss, "Clickable — click to dismiss")
+                        .on_hover_text(
+                            "When on, this reminder is clickable while shown and a \
+                             click dismisses it. When off it stays click-through.",
+                        );
                 });
                 ui.add_space(8.0);
             }
@@ -447,6 +456,7 @@ fn settings_ui(ui: &mut egui::Ui, draft: &mut SettingsDraft, outcome: &mut Setti
             unit: TimeUnit::Minutes,
             duration_amount: 4.0,
             duration_unit: TimeUnit::Seconds,
+            click_to_dismiss: false,
         });
     }
 
@@ -472,17 +482,6 @@ fn settings_ui(ui: &mut egui::Ui, draft: &mut SettingsDraft, outcome: &mut Setti
                 .suffix(" s"),
         );
     });
-
-    ui.add_space(6.0);
-    ui.checkbox(
-        &mut draft.appearance.click_to_dismiss,
-        "Click a reminder to dismiss it",
-    )
-    .on_hover_text(
-        "When off, blink is completely click-through and never intercepts clicks.\n\
-         When on, the overlay becomes clickable while a reminder is shown so you \
-         can click to dismiss it.",
-    );
 
     ui.separator();
     ui.horizontal(|ui| {
