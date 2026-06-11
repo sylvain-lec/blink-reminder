@@ -333,48 +333,50 @@ fn settings_ui(ui: &mut egui::Ui, draft: &mut SettingsDraft, outcome: &mut Setti
 
     egui::ScrollArea::vertical()
         .auto_shrink([false, true])
-        .max_height(260.0)
+        .max_height(300.0)
         .show(ui, |ui| {
             let mut remove = None;
-            egui::Grid::new("reminders_grid")
-                .num_columns(4)
-                .spacing([12.0, 10.0])
-                .show(ui, |ui| {
-                    ui.strong("Message");
-                    ui.strong("Every");
-                    ui.strong("Show for");
-                    ui.label("");
-                    ui.end_row();
+            for (i, r) in draft.reminders.iter_mut().enumerate() {
+                egui::Frame::group(ui.style()).show(ui, |ui| {
+                    // Fill the window width so the message field is roomy.
+                    let w = ui.available_width();
+                    ui.set_width(w);
 
-                    for (i, r) in draft.reminders.iter_mut().enumerate() {
-                        ui.add(
-                            egui::TextEdit::singleline(&mut r.message)
-                                .desired_width(440.0)
-                                .hint_text("Reminder text"),
-                        );
-                        ui.horizontal(|ui| {
-                            ui.add(egui::DragValue::new(&mut r.amount).range(1..=9999));
-                            egui::ComboBox::from_id_salt(("unit", i))
-                                .selected_text(r.unit.label())
-                                .width(90.0)
-                                .show_ui(ui, |ui| {
-                                    for unit in TimeUnit::ALL {
-                                        ui.selectable_value(&mut r.unit, unit, unit.label());
-                                    }
-                                });
-                        });
+                    ui.add(
+                        egui::TextEdit::singleline(&mut r.message)
+                            .hint_text("Reminder text")
+                            .desired_width(f32::INFINITY),
+                    );
+                    ui.add_space(6.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label("Every");
+                        ui.add(egui::DragValue::new(&mut r.amount).range(1..=9999));
+                        egui::ComboBox::from_id_salt(("unit", i))
+                            .selected_text(r.unit.label())
+                            .width(96.0)
+                            .show_ui(ui, |ui| {
+                                for unit in TimeUnit::ALL {
+                                    ui.selectable_value(&mut r.unit, unit, unit.label());
+                                }
+                            });
+                        ui.add_space(16.0);
+                        ui.label("Show for");
                         ui.add(
                             egui::DragValue::new(&mut r.duration_secs)
                                 .range(0.5..=60.0)
                                 .speed(0.1)
                                 .suffix(" s"),
                         );
-                        if ui.button("🗑").on_hover_text("Remove").clicked() {
-                            remove = Some(i);
-                        }
-                        ui.end_row();
-                    }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("🗑 Remove").clicked() {
+                                remove = Some(i);
+                            }
+                        });
+                    });
                 });
+                ui.add_space(8.0);
+            }
             if let Some(i) = remove {
                 draft.reminders.remove(i);
             }
