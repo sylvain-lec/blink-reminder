@@ -5,6 +5,8 @@
 # Usage:
 #   ./package-macos.sh                 # native build for this Mac
 #   ./package-macos.sh --universal     # universal (arm64 + x86_64) binary
+#   ./package-macos.sh --dmg           # also produce a shareable .dmg
+#   ./package-macos.sh --universal --dmg
 #
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -14,7 +16,17 @@ BIN_NAME="blink-rust"
 BUNDLE_ID="com.blink.reminder"
 VERSION="$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/')"
 
-if [[ "${1:-}" == "--universal" ]]; then
+UNIVERSAL=0
+DMG=0
+for arg in "$@"; do
+    case "$arg" in
+        --universal) UNIVERSAL=1 ;;
+        --dmg) DMG=1 ;;
+        *) echo "unknown option: $arg" >&2; exit 1 ;;
+    esac
+done
+
+if [[ $UNIVERSAL -eq 1 ]]; then
     echo "Building universal release binary…"
     rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null
     cargo build --release --target aarch64-apple-darwin
@@ -62,4 +74,18 @@ if command -v codesign >/dev/null; then
 fi
 
 echo "Done: ${APP_DIR}"
+
+if [[ $DMG -eq 1 ]]; then
+    DMG_PATH="dist/${APP_NAME}.dmg"
+    echo "Building ${DMG_PATH}…"
+    STAGING="$(mktemp -d)"
+    cp -R "$APP_DIR" "$STAGING/"
+    ln -s /Applications "$STAGING/Applications"   # drag-to-install target
+    rm -f "$DMG_PATH"
+    hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING" \
+        -ov -format UDZO "$DMG_PATH" >/dev/null
+    rm -rf "$STAGING"
+    echo "Done: ${DMG_PATH}"
+fi
+
 echo "Run it with:  open \"${APP_DIR}\"    (look for the eye icon in the menu bar)"

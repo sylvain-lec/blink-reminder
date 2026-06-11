@@ -25,13 +25,30 @@ To get a double-clickable app instead of running from the terminal:
 ```sh
 ./package-macos.sh              # builds dist/Blink Reminder.app
 ./package-macos.sh --universal  # arm64 + x86_64 (for sharing with Intel Macs)
+./package-macos.sh --dmg        # also build a shareable dist/Blink Reminder.dmg
 open "dist/Blink Reminder.app"  # launch it
 ```
 
 The bundle is marked `LSUIElement`, so it runs as a menu-bar (tray) app with no
 Dock icon — quit it from the eye icon's menu. It's ad-hoc code-signed for local
 use; to keep it in your Applications folder just drag `Blink Reminder.app`
-there. (To launch at login: System Settings → General → Login Items → add it.)
+there (the `.dmg` opens with a drag-to-Applications shortcut). To launch at
+login: System Settings → General → Login Items → add it.
+
+## Windows & Linux executables
+
+Cross-compiling this GUI app from one OS to another isn't reliable, so native
+binaries are built by CI (`.github/workflows/build.yml`) on macOS, Linux and
+Windows runners. Push the repo to GitHub and the workflow produces downloadable
+artifacts on every push/tag:
+
+- `blink-rust-windows-x86_64.exe` — no console window; double-click to run.
+- `blink-rust-linux-x86_64` — needs GTK/X11 at runtime (`libgtk-3`, `libxdo`,
+  `libayatana-appindicator3`).
+- `blink-rust-macos-arm64`.
+
+To build locally on Windows or Linux instead, just run `cargo build --release`
+on that machine (install the Linux dev packages listed in the workflow first).
 
 ## Editing reminders
 

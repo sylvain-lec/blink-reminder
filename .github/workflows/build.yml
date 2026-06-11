@@ -1,0 +1,67 @@
+name: build
+
+# Builds native executables for macOS, Linux and Windows. Cross-compiling a
+# wgpu + GTK GUI app from one OS to another isn't reliable, so each binary is
+# built on its own runner. Download them from the run's "Artifacts" section.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            name: blink-rust-macos-arm64
+            bin: blink-rust
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: blink-rust-linux-x86_64
+            bin: blink-rust
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: blink-rust-windows-x86_64
+            bin: blink-rust.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Linux needs GTK/X11 dev libraries (egui/winit) plus the tray-icon deps.
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev libxdo-dev libayatana-appindicator3-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Stage binary
+        shell: bash
+        run: |
+          mkdir -p staging
+          cp "target/${{ matrix.target }}/release/${{ matrix.bin }}" "staging/${{ matrix.bin }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: staging/${{ matrix.bin }}
+          if-no-files-found: error
