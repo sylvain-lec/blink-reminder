@@ -49,6 +49,13 @@ artifacts on every push/tag:
 
 To build locally on Windows or Linux instead, just run `cargo build --release`
 on that machine (install the Linux dev packages listed in the workflow first).
+The Windows `.exe` gets the app icon embedded automatically (via `build.rs`).
+
+## Icon
+
+The eye icon lives in `assets/` (`icon.png` for macOS, `icon.ico` for Windows).
+Both are generated with no third-party tools by `python3 tools/gen_icon.py`;
+edit that script and rerun it to change the icon, then rebuild.
 
 ## Editing reminders
 

@@ -48,6 +48,24 @@ mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$BIN_PATH" "$APP_DIR/Contents/MacOS/${BIN_NAME}"
 chmod +x "$APP_DIR/Contents/MacOS/${BIN_NAME}"
 
+# Build the .icns app icon from the master PNG (sips + iconutil are built in).
+ICON_PLIST=""
+if [[ -f assets/icon.png ]]; then
+    echo "Building app icon…"
+    ICONSET="$(mktemp -d)/AppIcon.iconset"
+    mkdir -p "$ICONSET"
+    for sz in 16 32 128 256 512; do
+        sips -z "$sz" "$sz" assets/icon.png --out "$ICONSET/icon_${sz}x${sz}.png" >/dev/null
+        sips -z "$((sz * 2))" "$((sz * 2))" assets/icon.png \
+            --out "$ICONSET/icon_${sz}x${sz}@2x.png" >/dev/null
+    done
+    iconutil -c icns "$ICONSET" -o "$APP_DIR/Contents/Resources/AppIcon.icns"
+    rm -rf "$(dirname "$ICONSET")"
+    ICON_PLIST="    <key>CFBundleIconFile</key><string>AppIcon</string>"
+else
+    echo "warning: assets/icon.png missing; building without an icon" >&2
+fi
+
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -59,6 +77,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>CFBundleVersion</key><string>${VERSION}</string>
     <key>CFBundleShortVersionString</key><string>${VERSION}</string>
     <key>CFBundleExecutable</key><string>${BIN_NAME}</string>
+${ICON_PLIST}
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>LSMinimumSystemVersion</key><string>10.15</string>
     <key>LSUIElement</key><true/>
