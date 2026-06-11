@@ -18,6 +18,18 @@ cargo run --release  # smoother
 A tray icon (a little eye 👁️) appears; on macOS there is no Dock icon. The
 default blink reminder fires every 20 seconds.
 
+## Editing reminders
+
+Right-click the tray icon → **Settings…** to open an editor where you can:
+
+- change each reminder's **message**, **interval**, and **on-screen duration**,
+- **add** or **remove** reminders,
+- tweak **font size**, **opacity**, and **fade** time.
+
+Click **Save** to apply immediately and write the changes back to the config
+file (below); **Cancel** or closing the window discards them. You can also edit
+the file directly — see the next section.
+
 ## Configuration
 
 On first launch a default config is written to your OS config directory and
@@ -52,8 +64,9 @@ interval_secs = 3600
 duration_secs = 5
 ```
 
-Edit the file and **relaunch** to apply changes. An invalid or missing file
-falls back to the built-in defaults (a message is printed to stderr).
+Edits made in the **Settings…** window are saved here automatically. If you
+edit the file by hand, **relaunch** to apply the changes. An invalid or missing
+file falls back to the built-in defaults (a message is printed to stderr).
 
 ## How it works
 

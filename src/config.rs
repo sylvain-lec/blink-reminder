@@ -78,6 +78,17 @@ pub fn config_path() -> Option<PathBuf> {
     dirs::config_dir().map(|d| d.join("blink-rust").join("config.toml"))
 }
 
+/// Write `cfg` back to the config file (used by the in-app settings window).
+pub fn save(cfg: &Config) -> std::io::Result<()> {
+    let path = config_path()
+        .ok_or_else(|| std::io::Error::other("could not determine config directory"))?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let s = toml::to_string_pretty(cfg).map_err(std::io::Error::other)?;
+    std::fs::write(&path, s)
+}
+
 /// Load the config, creating a commented default file on first run. Any error
 /// (missing dir, unreadable/invalid file) is reported to stderr and the app
 /// falls back to built-in defaults so it always starts.

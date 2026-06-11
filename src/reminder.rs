@@ -51,23 +51,33 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn new(cfg: Config) -> Self {
+        let mut s = Self {
+            reminders: Vec::new(),
+            appearance: Appearance::default(),
+            current: None,
+        };
+        s.apply_config(cfg);
+        s
+    }
+
+    /// Replace the reminders and appearance with a new config (from the settings
+    /// window). All timers are rescheduled relative to now and any visible
+    /// reminder is dismissed, so changes take effect immediately.
+    pub fn apply_config(&mut self, cfg: Config) {
         let Config {
             appearance,
             reminders,
         } = cfg;
         let now = Instant::now();
-        let reminders = reminders
+        self.reminders = reminders
             .into_iter()
             .map(|c| {
                 let next_fire = now + interval_of(&c);
                 Scheduled { cfg: c, next_fire }
             })
             .collect();
-        Self {
-            reminders,
-            appearance,
-            current: None,
-        }
+        self.appearance = appearance;
+        self.current = None;
     }
 
     /// Reschedule every reminder relative to `now` (used when resuming from pause

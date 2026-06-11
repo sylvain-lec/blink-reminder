@@ -6,11 +6,12 @@
 //! without busy-polling.
 
 use eframe::egui;
-use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem};
+use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 /// What the user asked for via the tray menu.
 pub enum TrayAction {
+    OpenSettings,
     TogglePause,
     Quit,
 }
@@ -19,6 +20,7 @@ pub struct Tray {
     // Kept alive for the lifetime of the app; dropping it removes the icon.
     _tray: TrayIcon,
     pause_item: MenuItem,
+    settings_id: MenuId,
     pause_id: MenuId,
     quit_id: MenuId,
 }
@@ -29,8 +31,11 @@ impl Tray {
     /// to wake the render loop on menu clicks.
     pub fn new(egui_ctx: egui::Context) -> Option<Self> {
         let menu = Menu::new();
+        let settings_item = MenuItem::new("Settings…", true, None);
         let pause_item = MenuItem::new("Pause", true, None);
         let quit_item = MenuItem::new("Quit", true, None);
+        menu.append(&settings_item).ok()?;
+        menu.append(&PredefinedMenuItem::separator()).ok()?;
         menu.append(&pause_item).ok()?;
         menu.append(&quit_item).ok()?;
 
@@ -46,6 +51,7 @@ impl Tray {
 
         Some(Self {
             _tray: tray,
+            settings_id: settings_item.id().clone(),
             pause_id: pause_item.id().clone(),
             quit_id: quit_item.id().clone(),
             pause_item,
@@ -55,6 +61,9 @@ impl Tray {
     /// Drain any pending menu events into a `TrayAction`.
     pub fn poll(&self) -> Option<TrayAction> {
         while let Ok(event) = MenuEvent::receiver().try_recv() {
+            if event.id == self.settings_id {
+                return Some(TrayAction::OpenSettings);
+            }
             if event.id == self.pause_id {
                 return Some(TrayAction::TogglePause);
             }

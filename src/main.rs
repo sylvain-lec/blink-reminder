@@ -53,12 +53,23 @@ fn main() -> eframe::Result {
     )
 }
 
+/// Outcome of a frame of the settings window.
+enum SettingsOutcome {
+    None,
+    Save,
+    Cancel,
+}
+
 struct BlinkApp {
+    /// Source-of-truth config; the scheduler is derived from it.
+    config: config::Config,
     scheduler: reminder::Scheduler,
     tray: Option<tray::Tray>,
     paused: bool,
     /// Whether the overlay has been stretched to cover the monitor yet.
     sized: bool,
+    /// Working copy shown in the settings window; `Some` while it's open.
+    settings: Option<config::Config>,
 }
 
 impl BlinkApp {
@@ -68,10 +79,12 @@ impl BlinkApp {
             eprintln!("blink: tray icon unavailable; running without tray controls");
         }
         Self {
-            scheduler: reminder::Scheduler::new(cfg),
+            scheduler: reminder::Scheduler::new(cfg.clone()),
+            config: cfg,
             tray,
             paused: false,
             sized: false,
+            settings: None,
         }
     }
 
@@ -126,6 +139,12 @@ impl eframe::App for BlinkApp {
         if let Some(tray) = &self.tray {
             while let Some(action) = tray.poll() {
                 match action {
+                    tray::TrayAction::OpenSettings => {
+                        // Reopening keeps any in-progress edits.
+                        if self.settings.is_none() {
+                            self.settings = Some(self.config.clone());
+                        }
+                    }
                     tray::TrayAction::TogglePause => {
                         self.paused = !self.paused;
                         tray.set_paused(self.paused);
@@ -142,21 +161,157 @@ impl eframe::App for BlinkApp {
             }
         }
 
-        // Paused: draw nothing; the next tray click wakes us via the handler.
-        if self.paused {
+        // Run reminders only in normal overlay mode. While paused or editing
+        // settings the overlay stays empty (the next tray/menu event wakes us).
+        if !self.paused && self.settings.is_none() {
+            let now = Instant::now();
+            let wake = self.scheduler.update(now, ui.max_rect());
+
+            if self.scheduler.current.is_some() {
+                self.draw_active(ui, now);
+                ctx.request_repaint(); // animate the fade
+            } else if let Some(dur) = wake {
+                ctx.request_repaint_after(dur);
+            }
+        }
+
+        self.show_settings(ui);
+    }
+}
+
+impl BlinkApp {
+    /// Render the settings window (a second OS window) while `self.settings` is
+    /// `Some`, applying or discarding the draft when the user clicks Save/Cancel
+    /// or closes the window.
+    fn show_settings(&mut self, ui: &egui::Ui) {
+        if self.settings.is_none() {
             return;
         }
+        let ctx = ui.ctx().clone();
+        let mut outcome = SettingsOutcome::None;
 
-        let now = Instant::now();
-        let wake = self.scheduler.update(now, ui.max_rect());
+        {
+            let draft = self.settings.as_mut().expect("settings is Some");
+            ctx.show_viewport_immediate(
+                egui::ViewportId::from_hash_of("blink-settings"),
+                egui::ViewportBuilder::default()
+                    .with_title("Blink Reminder — Settings")
+                    .with_inner_size([580.0, 400.0])
+                    .with_min_inner_size([420.0, 260.0]),
+                |vctx, _class| {
+                    if vctx.input(|i| i.viewport().close_requested()) {
+                        outcome = SettingsOutcome::Cancel;
+                    }
+                    // `CentralPanel::show(ctx, …)` is soft-deprecated but is
+                    // still the documented way to fill a viewport's root area
+                    // (there's no `show_inside` equivalent without a parent Ui).
+                    #[allow(deprecated)]
+                    egui::CentralPanel::default().show(vctx, |ui| {
+                        settings_ui(ui, draft, &mut outcome);
+                    });
+                },
+            );
+        }
 
-        if self.scheduler.current.is_some() {
-            self.draw_active(ui, now);
-            ctx.request_repaint(); // animate the fade
-        } else if let Some(dur) = wake {
-            ctx.request_repaint_after(dur);
+        match outcome {
+            SettingsOutcome::Save => {
+                let draft = self.settings.take().expect("settings is Some");
+                self.config = draft;
+                if let Err(e) = config::save(&self.config) {
+                    eprintln!("blink: could not save config: {e}");
+                }
+                self.scheduler.apply_config(self.config.clone());
+            }
+            SettingsOutcome::Cancel => self.settings = None,
+            SettingsOutcome::None => {}
         }
     }
+}
+
+/// The contents of the settings window: a row per reminder plus appearance
+/// controls and Save/Cancel.
+fn settings_ui(ui: &mut egui::Ui, draft: &mut config::Config, outcome: &mut SettingsOutcome) {
+    ui.add_space(4.0);
+    ui.label("Reminders fire on their own schedule and fade in at a random spot.");
+    ui.separator();
+
+    egui::ScrollArea::vertical()
+        .max_height(220.0)
+        .show(ui, |ui| {
+            let mut remove = None;
+            egui::Grid::new("reminders_grid")
+                .num_columns(4)
+                .spacing([10.0, 8.0])
+                .show(ui, |ui| {
+                    ui.strong("Message");
+                    ui.strong("Every");
+                    ui.strong("Show");
+                    ui.label("");
+                    ui.end_row();
+
+                    for (i, r) in draft.reminders.iter_mut().enumerate() {
+                        ui.add(egui::TextEdit::singleline(&mut r.message).desired_width(240.0));
+                        ui.add(
+                            egui::DragValue::new(&mut r.interval_secs)
+                                .range(1..=86_400)
+                                .suffix(" s"),
+                        );
+                        ui.add(
+                            egui::DragValue::new(&mut r.duration_secs)
+                                .range(0.5..=60.0)
+                                .speed(0.1)
+                                .suffix(" s"),
+                        );
+                        if ui.button("🗑").on_hover_text("Remove").clicked() {
+                            remove = Some(i);
+                        }
+                        ui.end_row();
+                    }
+                });
+            if let Some(i) = remove {
+                draft.reminders.remove(i);
+            }
+        });
+
+    if ui.button("➕ Add reminder").clicked() {
+        draft.reminders.push(config::ReminderConfig {
+            message: "New reminder".into(),
+            interval_secs: 60,
+            duration_secs: 4.0,
+        });
+    }
+
+    ui.separator();
+    ui.strong("Appearance");
+    ui.horizontal(|ui| {
+        ui.label("Font");
+        ui.add(egui::DragValue::new(&mut draft.appearance.font_size).range(8.0..=200.0));
+        ui.add_space(8.0);
+        ui.label("Opacity");
+        ui.add(
+            egui::DragValue::new(&mut draft.appearance.max_opacity)
+                .range(0.05..=1.0)
+                .speed(0.01),
+        );
+        ui.add_space(8.0);
+        ui.label("Fade");
+        ui.add(
+            egui::DragValue::new(&mut draft.appearance.fade_secs)
+                .range(0.0..=5.0)
+                .speed(0.05)
+                .suffix(" s"),
+        );
+    });
+
+    ui.separator();
+    ui.horizontal(|ui| {
+        if ui.button("Cancel").clicked() {
+            *outcome = SettingsOutcome::Cancel;
+        }
+        if ui.button("Save").clicked() {
+            *outcome = SettingsOutcome::Save;
+        }
+    });
 }
 
 /// Slide `rect` so it fits inside `bounds` (without resizing it).
