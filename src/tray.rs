@@ -1,12 +1,20 @@
-//! System tray icon with a Pause/Resume and Quit menu.
+//! System tray icon with a Settings, Pause/Resume and Quit menu.
 //!
 //! The icon is created on the main thread (from `BlinkApp::new`), which is
-//! required on macOS. A menu-event handler wakes the egui loop the instant the
-//! user clicks an item, so `poll()` (called from `update`) sees it immediately
-//! without busy-polling.
+//! required on macOS. We install a `muda` menu-event handler that maps the
+//! clicked item to a [`TrayAction`], pushes it onto a shared queue, and wakes
+//! the egui loop — so `poll()` (called from `ui`) sees it immediately without
+//! busy-polling.
+//!
+//! Note: `muda` routes events *either* to a handler *or* to its global channel,
+//! never both. Once `set_event_handler` is installed, `MenuEvent::receiver()`
+//! goes silent, so we must turn events into actions inside the handler itself.
+
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 
 use eframe::egui;
-use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
+use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 /// What the user asked for via the tray menu.
@@ -20,9 +28,8 @@ pub struct Tray {
     // Kept alive for the lifetime of the app; dropping it removes the icon.
     _tray: TrayIcon,
     pause_item: MenuItem,
-    settings_id: MenuId,
-    pause_id: MenuId,
-    quit_id: MenuId,
+    /// Actions produced by the menu-event handler, drained by `poll`.
+    actions: Arc<Mutex<VecDeque<TrayAction>>>,
 }
 
 impl Tray {
@@ -46,32 +53,40 @@ impl Tray {
             .build()
             .ok()?;
 
-        // Wake egui immediately whenever a menu item is clicked.
-        MenuEvent::set_event_handler(Some(move |_event| egui_ctx.request_repaint()));
+        let actions: Arc<Mutex<VecDeque<TrayAction>>> = Arc::new(Mutex::new(VecDeque::new()));
+
+        // Map each clicked item to an action, queue it, and wake egui. We match
+        // by id because the handler can't borrow `self`.
+        let settings_id = settings_item.id().clone();
+        let pause_id = pause_item.id().clone();
+        let quit_id = quit_item.id().clone();
+        let queue = actions.clone();
+        MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
+            let action = if event.id == settings_id {
+                TrayAction::OpenSettings
+            } else if event.id == pause_id {
+                TrayAction::TogglePause
+            } else if event.id == quit_id {
+                TrayAction::Quit
+            } else {
+                return;
+            };
+            if let Ok(mut q) = queue.lock() {
+                q.push_back(action);
+            }
+            egui_ctx.request_repaint();
+        }));
 
         Some(Self {
             _tray: tray,
-            settings_id: settings_item.id().clone(),
-            pause_id: pause_item.id().clone(),
-            quit_id: quit_item.id().clone(),
             pause_item,
+            actions,
         })
     }
 
-    /// Drain any pending menu events into a `TrayAction`.
+    /// Pop the next queued menu action, if any.
     pub fn poll(&self) -> Option<TrayAction> {
-        while let Ok(event) = MenuEvent::receiver().try_recv() {
-            if event.id == self.settings_id {
-                return Some(TrayAction::OpenSettings);
-            }
-            if event.id == self.pause_id {
-                return Some(TrayAction::TogglePause);
-            }
-            if event.id == self.quit_id {
-                return Some(TrayAction::Quit);
-            }
-        }
-        None
+        self.actions.lock().ok()?.pop_front()
     }
 
     /// Reflect the paused state in the menu label.

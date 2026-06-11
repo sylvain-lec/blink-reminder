@@ -197,7 +197,10 @@ impl BlinkApp {
                 egui::ViewportBuilder::default()
                     .with_title("Blink Reminder — Settings")
                     .with_inner_size([580.0, 400.0])
-                    .with_min_inner_size([420.0, 260.0]),
+                    .with_min_inner_size([420.0, 260.0])
+                    // The overlay is always-on-top; make sure this normal window
+                    // comes forward and can take keyboard focus for text editing.
+                    .with_active(true),
                 |vctx, _class| {
                     if vctx.input(|i| i.viewport().close_requested()) {
                         outcome = SettingsOutcome::Cancel;
