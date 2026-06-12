@@ -62,8 +62,7 @@ login: System Settings → General → Login Items → add it.
 
 Cross-compiling this GUI app from one OS to another isn't reliable, so native
 binaries are built by CI (`.github/workflows/build.yml`) on macOS, Linux and
-Windows runners. Push the repo to GitHub and the workflow produces downloadable
-artifacts on every push/tag:
+Windows runners. The workflow produces downloadable artifacts on every push/tag:
 
 - `blink-rust-windows-x86_64.exe` — no console window; double-click to run.
 - `blink-rust-linux-x86_64` — needs GTK/X11 at runtime (`libgtk-3`, `libxdo`,
@@ -72,13 +71,14 @@ artifacts on every push/tag:
 
 To build locally on Windows or Linux instead, just run `cargo build --release`
 on that machine (install the Linux dev packages listed in the workflow first).
-The Windows `.exe` gets the app icon embedded automatically (via `build.rs`).
 
 ## Icon
 
 The eye icon lives in `assets/` (`icon.png` for macOS, `icon.ico` for Windows).
 Both are generated with no third-party tools by `python3 tools/gen_icon.py`;
-edit that script and rerun it to change the icon, then rebuild.
+edit that script and rerun it to change the icon, then rebuild. The Windows `.exe` 
+gets the app icon embedded automatically (via `build.rs`).
+
 
 ## Editing reminders
 
@@ -170,4 +170,4 @@ cargo clippy
 ```
 
 [egui]: https://github.com/emilk/egui
-[eframe]: https://github.com/emilk/egui/tree/master/crates/eframe
+[eframe]: https://github.com/emilk/egui/tree/main/crates/eframe
