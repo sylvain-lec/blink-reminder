@@ -1,12 +1,35 @@
+<div align="center">
+
+<img src="assets/icon.png" alt="Blink Reminder" width="120" height="120" />
+
 # Blink Reminder
 
-A tiny cross-platform desktop app (Rust + [egui]/[eframe]) that gently reminds
-you to **blink** — and anything else you like (stand up, drink water…).
+**A tiny cross-platform desktop app that gently reminds you to blink** — and
+anything else you like (stand up, drink water…).
 
-Every reminder appears as a **semi-transparent message at a random spot** on a
-**full-screen, click-through, always-on-top overlay**, fades in and out, and
-never steals focus or blocks clicks. It lives in the **system tray** with
-Pause/Resume and Quit.
+[![Build](https://github.com/sylvain-lec/blink-reminder/actions/workflows/build.yml/badge.svg)](https://github.com/sylvain-lec/blink-reminder/actions/workflows/build.yml)
+&nbsp;[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+&nbsp;![Rust](https://img.shields.io/badge/Rust-1.95%2B-orange?logo=rust)
+&nbsp;![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
+
+</div>
+
+Built with Rust + [egui]/[eframe]. Every reminder appears as a **semi-transparent
+message at a random spot** on a **full-screen, click-through, always-on-top
+overlay**, fades in and out, and never steals focus or blocks clicks. It lives in
+the **system tray** with Pause/Resume, Quit, and a Settings window.
+
+## Features
+
+- ⏰ **Multiple reminders**, each on its own schedule (seconds / minutes / hours).
+- 🎯 Appears at a **random spot**, **fades** in and out, **semi-transparent**.
+- 🖱️ **Click-through** by default so it never interrupts you — with an optional
+  per-reminder *click to dismiss*.
+- ⚙️ In-app **Settings window** (from the tray) to edit messages, intervals,
+  durations and appearance.
+- 🩺 **System-tray** menu: Settings, Pause/Resume, Quit. No Dock icon on macOS.
+- 📦 **TOML config**, auto-created on first run.
+- 🖥️ Runs on **macOS, Linux and Windows**.
 
 ## Run
 
