@@ -32,7 +32,7 @@ jobs:
             bin: blink-rust.exe
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Linux needs GTK/X11 dev libraries (egui/winit) plus the tray-icon deps.
       - name: Install Linux dependencies
@@ -60,7 +60,7 @@ jobs:
           mkdir -p staging
           cp "target/${{ matrix.target }}/release/${{ matrix.bin }}" "staging/${{ matrix.bin }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.name }}
           path: staging/${{ matrix.bin }}
